@@ -3,8 +3,8 @@ from time import mktime
 from tornado.escape import json_decode, utf8
 from tornado.gen import coroutine
 from uuid import uuid4
-
 from .base import BaseHandler
+from ..security import  kdf_hash, basic_hash
 
 class LoginHandler(BaseHandler):
 
@@ -20,7 +20,7 @@ class LoginHandler(BaseHandler):
         }
 
         yield self.db.users.update_one({
-            'email': email
+            'lookupEmail': basic_hash(email)
         }, {
             '$set': token
         })
@@ -50,16 +50,18 @@ class LoginHandler(BaseHandler):
             return
 
         user = yield self.db.users.find_one({
-          'email': email
+          'lookupEmail': basic_hash(email)
         }, {
-          'password': 1
+          'password': 1,
+          'passSalt': 1,
         })
 
         if user is None:
             self.send_error(403, message='The email address and password are invalid!')
             return
 
-        if user['password'] != password:
+        # Comparing to see if the hashing the entered password matches the stored password hash.
+        if user['password'] != kdf_hash(password, bytes.fromhex(user['passSalt'])):
             self.send_error(403, message='The email address and password are invalid!')
             return
 
